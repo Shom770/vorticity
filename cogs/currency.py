@@ -6,14 +6,21 @@ import pymongo
 from bisect import insort
 from config import mongodb_link
 
+
 class Currency(commands.Cog):
     """Cog for currency system"""
     def __init__(self, bot):
         self.bot = bot
         self.db = MongoClient(mongodb_link)
 
+    @commands.command()
+    async def config(self, ctx: Context) -> None:
+        """Configure the currency system in the server"""
+
     @commands.command(aliases=["balance", "bal", "wal"])
-    async def wallet(self, ctx: Context, member: discord.Member = None):
+    @commands.cooldown(1, 10, BucketType.user)
+    async def wallet(self, ctx: Context, member: discord.Member = None) -> None:
+        """Command to fetch balance local to the server."""
         server_col = self.db[str(ctx.guild.id)]
         if member:
             name = member.display_name
