@@ -12,7 +12,7 @@ class Currency(commands.Cog):
         self.bot = bot
         self.db = MongoClient(mongodb_link)
 
-    @commands.command()
+    @commands.command(aliases=["balance", "bal", "wal"])
     async def wallet(self, ctx: Context, member: discord.Member = None):
         server_col = self.db[str(ctx.guild.id)]
         if member:
