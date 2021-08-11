@@ -14,6 +14,7 @@ class Currency(commands.Cog):
         self.db = MongoClient(mongodb_link)
 
     @commands.command(aliases=['configure'])
+    @commands.has_permissions(administrator=True)
     async def config(self, ctx: Context, params: str = '') -> None:
         """Configure the currency system in the server"""
         if not params:
