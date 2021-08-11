@@ -53,7 +53,7 @@ class Currency(commands.Cog):
 
         if str(member) not in (collections := server_col.collection_names()):
             new_col = server_col[str(member)]
-            ranks = [server_col[col].find_one()['balance'] for col in collections]
+            ranks = [server_col[col].find_one()['balance'] for col in collections if col != 'info']
             insort(ranks, 250)
             try:
                 rank = ranks.index(250) + 1
