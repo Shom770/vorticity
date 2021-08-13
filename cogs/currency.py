@@ -6,6 +6,7 @@ import pymongo
 import asyncio
 from bisect import insort
 from config import mongodb_link
+from typing import Union
 
 
 class Currency(commands.Cog):
@@ -15,7 +16,7 @@ class Currency(commands.Cog):
         self.bot = bot
         self.db = MongoClient(mongodb_link)
 
-    def able_to_use_market(self, guild: Context.guild, member: discord.Member):
+    def able_to_use_market(self, guild: Context.guild, member: discord.Member) -> Union[discord.Embed, bool]:
         """Helper function to check if the user can buy/sell on the market"""
         store_config = self.db[str(guild.id)]['info'].find_one()['store']
         user_col = self.db[str(guild.id)][str(member.id)].find_one()
@@ -38,10 +39,28 @@ class Currency(commands.Cog):
         else:
             bal_bool = True
 
-        return rank_bool and role_bool and bal_bool, \
-               [(name, ele) for name, ele, ele_bool in zip(('rank', 'role', 'balance'),
-                                                           [rank, role, bal],
-                                                           [rank_bool, role_bool, bal_bool]) if not ele_bool]
+        failed = [(name, ele) for name, ele, ele_bool in zip(('rank', 'role', 'balance'),
+                                                             [rank, role, bal],
+                                                             [rank_bool, role_bool, bal_bool]) if not ele_bool]
+        if failed:
+            user_col = server_col[str(ctx.author.id)].find_one()
+            error_embed = discord.Embed(title="You failed one or more of the requirements to be able to use the market",
+                                        color=discord.Color.red())
+            for element_type, failed_element in failed:
+                field = {'name': f"You failed the minimum {element_type} needed."}
+                if element_type == 'rank':
+                    field['value'] = f"Your rank in the server for this bot's economy is {user_col['rank']}, " \
+                                     f"though the minimum rank needed is {failed_element}"
+                elif element_type == 'role':
+                    field['value'] = f"Your top role is {ctx.author.top_role}, " \
+                                     f"though the minimum role needed is {failed_element}"
+                elif element_type == 'balance':
+                    field['value'] = f"Your balance is {user_col['balance']}, " \
+                                     f"though the minimum balance needed is {failed_element}"
+                error_embed.add_field(name=field['name'], value=field['value'], inline=False)
+            return error_embed
+        else:
+            return True
 
     @commands.command(aliases=["mark", "store"])
     async def market(self, ctx: Context, *, sort_key: str = None):
@@ -81,7 +100,8 @@ class Currency(commands.Cog):
             while count <= len(market_embeds):
                 try:
                     reaction, user = await self.bot.wait_for('reaction_add', timeout=120.0,
-                                           check=lambda reaction, user: ctx.author and str(reaction.emoji) in emojis)
+                                                             check=lambda reaction, user: ctx.author and str(
+                                                                 reaction.emoji) in emojis)
                     if user.name + '#' + user.discriminator != 'Vorticity#5053':
                         page_cases = {'⏮': 0, '⏪': -1, '⏩': 1, '⏭': len(market_embeds) - 1}
                         if (page_num := page_cases[reaction.emoji]) in (0, len(market_embed) - 1):
@@ -94,27 +114,13 @@ class Currency(commands.Cog):
                     break
 
     @commands.command(aliases=["market_sell", "on_market"])
-    async def sell(self, ctx: Context, *, item: str):
+    @commands.cooldown(1, 30, BucketType.user)
+    async def sell(self, ctx: Context, *, item: str) -> None:
         """Command to sell items."""
         server_col = self.db[str(ctx.guild.id)]
-        able_to_buy, failed = self.able_to_use_market(ctx.guild, ctx.author)
-        if not able_to_buy:
-            user_col = server_col[str(ctx.author.id)].find_one()
-            error_embed = discord.Embed(title="You failed one or more of the requirements to be able to use the market",
-                                        color=discord.Color.red())
-            for element_type, failed_element in failed:
-                field = {'name': f"You failed the minimum {element_type} needed."}
-                if element_type == 'rank':
-                    field['value'] = f"Your rank in the server for this bot's economy is {user_col['rank']}, " \
-                                     f"though the minimum rank needed is {failed_element}"
-                elif element_type == 'role':
-                    field['value'] = f"Your top role is {ctx.author.top_role}, " \
-                                     f"though the minimum role needed is {failed_element}"
-                elif element_type == 'balance':
-                    field['value'] = f"Your balance is {user_col['balance']}, " \
-                                     f"though the minimum balance needed is {failed_element}"
-                error_embed.add_field(name=field['name'], value=field['value'], inline=False)
-            await ctx.send(embed=error_embed)
+        able_to_buy = self.able_to_use_market(ctx.guild, ctx.author)
+        if not isinstance(able_to_buy, bool):
+            await ctx.send(embed=able_to_buy)
             return
 
         item = item.split(',' if ', ' not in item else ', ')
@@ -141,10 +147,12 @@ class Currency(commands.Cog):
         user_col = server_col[str(ctx.author.id)]
         if in_inventory and name in [ele[0] for ele in user_col['inventory']]:
             items = server_col['store'].find_one()['items']
-            items.append({'name': name, 'description': desc, 'cost': int(cost), 'owner': ctx.author.id})
+            items.append({'name': name, 'description': desc, 'cost': int(cost), 'owner': ctx.author.id,
+                          'transfer': True})
         else:
             items = server_col['store'].find_one()['items']
-            items.append({'name': name, 'description': desc, 'cost': int(cost), 'owner': None})
+            items.append({'name': name, 'description': desc, 'cost': int(cost), 'owner': ctx.author.id,
+                          'transfer': False})
         server_col['store'].update_one(server_col['store'].find_one(),
                                        {'$set': {'_id': 1, 'items': items}})
         try:
@@ -192,6 +200,54 @@ class Currency(commands.Cog):
                                                                'store': store}})
             await ctx.send(embed=discord.Embed(title="Success!", color=discord.Color.green()))
 
+    @commands.command(aliases=['purchase'])
+    @commands.cooldown(1, 30, BucketType.user)
+    async def buy(self, ctx: Context, item_name: str) -> None:
+        """Command to buy items/services on the market"""
+        server_col = self.db[str(ctx.guild.id)]
+        market = server_col['store']
+        item_to_purchase = sorted(market.find_one()['items'], key=lambda x: x['name'] == item_name)[-1]
+        if ctx.author.id == item_to_purchase['owner']:
+            await ctx.send(embed=discord.Embed(title="You cannot buy an item you own!", color=discord.Color.red()))
+            return
+        update_market = sorted(market.find_one()['items'], key=lambda x: x['name'] == item_name)[:-1]
+        owner_col = server_col[str(item_to_purchase['owner'])].find_one()
+        owner_col['balance'] += item_to_purchase['cost']
+        consumer_col = server_col[str(ctx.author.id)].find_one()
+        consumer_col['balance'] -= item_to_purchase['cost']
+        if item_to_purchase['transfer']:
+            owner_col['inventory'] = sorted(owner_col['inventory'], key=lambda x: x[0] == item_name)[:-1]
+            consumer_col['inventory'] = consumer_col['inventory'].append((item_to_purchase['name'],
+                                                                          item_to_purchase['description'],
+                                                                          item_to_purchase['cost']))
+        collections = server_col.collection_names()
+        (owner_id := server_col[str(item_to_purchase['owner'])]).update_one(owner_id.find_one(),
+                                                                            {'$set': owner_col})
+        (author_id := server_col[str(ctx.author.id)]).update_one(author_id.find_one(),
+                                                                 {'$set': consumer_col})
+        new_ranks = [print(server_col[col].find_one()['balance']) for col in collections if col not in ('info', 'store')]
+        owner_col['rank'], consumer_col['rank'] = new_ranks.index(owner_col['balance']), \
+                                                  new_ranks.index(consumer_col['balance'])
+        success_owner_embed = discord.Embed(title=f"Congratulations! {ctx.author.display_name} has bought your item!",
+                                            description=f"This user bought the following item: {item_name}",
+                                            color=discord.Color.green())
+        success_consumer_embed = discord.Embed(title=f"Success, {ctx.author.display_name}!",
+                                               description=f"You have successfully bought the item: {item_name}",
+                                               color=discord.Color.green())
+        try:
+            await self.bot.get_user(item_to_purchase['owner']).send(embed=success_owner_embed)
+        except discord.Forbidden:
+            print("forbidden")
+
+        try:
+            await self.bot.get_user(ctx.author.id).send(embed=success_consumer_embed)
+        except discord.Forbidden:
+            print("forbidden")
+
+        market.update_one(market.find_one(), {'$set': {'_id': 1, 'items': update_market}})
+        owner_id.update_one(owner_id.find_one(), {'$set': owner_col})
+        author_id.update_one(author_id.find_one(), {'$set': consumer_col})
+
     @commands.command(aliases=["balance", "bal", "wal"])
     @commands.cooldown(1, 10, BucketType.user)
     async def wallet(self, ctx: Context, member: discord.Member = None) -> None:
@@ -209,7 +265,7 @@ class Currency(commands.Cog):
 
         if str(member) not in (collections := server_col.collection_names()):
             new_col = server_col[str(member)]
-            ranks = [server_col[col].find_one()['balance'] for col in collections if col != 'info']
+            ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
             insort(ranks, 250)
             try:
                 rank = ranks.index(250) + 1
@@ -218,9 +274,9 @@ class Currency(commands.Cog):
             new_col.insert_one({'_id': len(collections) + 1,
                                 'balance': 250,
                                 'rank': rank,
-                                'inventory': ('The Copper Coin',
-                                              'Owned by the first three users of this bot in their server.', 2500)
-                                if len(collections) + 1 <= 3 else ()})
+                                'inventory': [('The Copper Coin',
+                                               'Owned by the first three users of this bot in their server.', 2500)]
+                                if len(collections) + 1 <= 3 else []})
 
         info = server_col[str(member)].find_one()
         wallet_embed = discord.Embed(title=f"{name}'s wallet", color=discord.Color.green())
