@@ -420,18 +420,50 @@ class Currency(commands.Cog):
     @commands.command(name="currency_leaderboard")
     @commands.cooldown(1, 10, BucketType.user)
     async def leaderboard(self, ctx: Context):
+        emojis = ['⏮', '⏪', '⏩', '⏭']
         server_col = self.db[str(ctx.guild.id)]
         collections = server_col.collection_names()
         users = [(server_col[col].find_one()['balance'],
                   self.bot.get_user(int(col)).display_name) for col in collections if col not in ('info', 'store')]
         users = sorted(users, key=lambda x: x[0], reverse=True)
+        leaderboard_embeds = []
         leaderboard_embed = discord.Embed(title=f"Leaderboard for {ctx.guild.name}")
         leaderboard_embed.set_thumbnail(url=ctx.guild.icon_url)
+        count = 0
         for idx, user in enumerate(users):
+            if count >= 5:
+                count = 0
+                leaderboard_embeds.append(leaderboard_embed)
+                leaderboard_embed = discord.Embed(title=f"Leaderboard for {ctx.guild.name}")
+                leaderboard_embed.set_thumbnail(url=ctx.guild.icon_url)
             leaderboard_embed.add_field(name=f"{idx + 1}. {user[-1]}", value=f"*{user[0]} "
                                         f"{server_col['info'].find_one()['currency_name']}*", inline=False)
+            count += 1
 
-        await ctx.send(embed=leaderboard_embed)
+        if count < 5:
+            leaderboard_embeds.append(leaderboard_embed)
+        msg = await ctx.send(embed=leaderboard_embeds[0])
+
+        if len(leaderboard_embeds) > 1:
+            for emoji in emojis:
+                await msg.add_reaction(emoji=emoji)
+            count = 0
+            page = 0
+            while count <= len(leaderboard_embeds):
+                try:
+                    reaction, user = await self.bot.wait_for('reaction_add', timeout=120.0,
+                                                             check=lambda reaction, user: ctx.author and str(
+                                                                 reaction.emoji) in emojis)
+                    if user.name + '#' + user.discriminator != 'Vorticity#5053':
+                        page_cases = {'⏮': 0, '⏪': -1, '⏩': 1, '⏭': len(leaderboard_embeds) - 1}
+                        if (page_num := page_cases[reaction.emoji]) in (0, len(leaderboard_embeds) - 1):
+                            page = page_num
+                        else:
+                            page += page_num
+                        await msg.edit(embed=leaderboard_embeds[page])
+                        count += 1
+                except (asyncio.TimeoutError, IndexError):
+                    break
 
 
 def setup(bot):
