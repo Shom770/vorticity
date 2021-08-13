@@ -259,7 +259,8 @@ class Currency(commands.Cog):
                                                                             {'$set': owner_col})
         (author_id := server_col[str(ctx.author.id)]).update_one(author_id.find_one(),
                                                                  {'$set': consumer_col})
-        new_ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
+        new_ranks = sorted([server_col[col].find_one()['balance']
+                            for col in collections if col not in ('info', 'store')])[::-1]
         owner_col['rank'], consumer_col['rank'] = new_ranks.index(owner_col['balance']), \
                                                   new_ranks.index(consumer_col['balance'])
         success_owner_embed = discord.Embed(title=f"Congratulations! {ctx.author.display_name} has bought your item!",
@@ -299,10 +300,11 @@ class Currency(commands.Cog):
 
         if str(member) not in (collections := server_col.collection_names()):
             new_col = server_col[str(member)]
-            ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
+            ranks = sorted([server_col[col].find_one()['balance']
+                            for col in collections if col not in ('info', 'store')])
             insort(ranks, 250)
             try:
-                rank = ranks.index(250) + 1
+                rank = ranks[::-1].index(250) + 1
             except ValueError:
                 rank = 1
             new_col.insert_one({'_id': len(collections) + 1,
@@ -348,7 +350,8 @@ class Currency(commands.Cog):
 
         user_col.update_one(user_col.find_one(), {'$set': user_dict})
         collections = server_col.collection_names()
-        new_ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
+        new_ranks = sorted([server_col[col].find_one()['balance']
+                            for col in collections if col not in ('info', 'store')])[::-1]
         rank = new_ranks.index(user_dict['balance']) + 1
         user_dict['rank'] = rank
         user_col.update_one(user_col.find_one(), {'$set': user_dict})
@@ -393,7 +396,8 @@ class Currency(commands.Cog):
             member_to_give_col.update_one(member_to_give_col.find_one(),
                                           {'$set': member_to_give_dict})
             collections = server_col.collection_names()
-            new_ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
+            new_ranks = sorted([server_col[col].find_one()['balance']
+                                for col in collections if col not in ('info', 'store')])[::-1]
             user_dict['rank'] = new_ranks.index(user_dict['balance']) + 1
             member_to_give_dict['rank'] = new_ranks.index(member_to_give_dict['balance']) + 1
             user_col.update_one(user_col.find_one(), {'$set': user_dict})
