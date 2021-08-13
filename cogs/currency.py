@@ -321,6 +321,8 @@ class Currency(commands.Cog):
     @commands.command(aliases=["gamble", "gam", "bet"])
     @commands.cooldown(1, 15, BucketType.user)
     async def roll_the_dice(self, ctx: Context, money: str) -> None:
+        if money == 'all':
+            money = self.db[str(ctx.guild.id)][str(ctx.author.id)].find_one()['balance']
         money = int(money.replace(',', ''))
         """One way to earn money by betting."""
         server_col = self.db[str(ctx.guild.id)]
