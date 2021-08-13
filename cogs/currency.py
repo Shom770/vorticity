@@ -168,7 +168,8 @@ class Currency(commands.Cog):
         if not server_col['store'].find_one():
             server_col['store'].insert_one({'_id': 1, 'items': []})
         user_col = server_col[str(ctx.author.id)]
-        if in_inventory and name in [ele[0] for ele in user_col['inventory']]:
+
+        if in_inventory and name in [ele[0] for ele in user_col.find_one()['inventory']]:
             items = server_col['store'].find_one()['items']
             items.append({'name': name, 'description': desc, 'cost': int(cost), 'owner': ctx.author.id,
                           'transfer': True})
@@ -240,6 +241,7 @@ class Currency(commands.Cog):
             return
         update_market = sorted(market.find_one()['items'], key=lambda x: x['name'] == item_name)[:-1]
         owner_col = server_col[str(item_to_purchase['owner'])].find_one()
+        print(owner_col)
         consumer_col = server_col[str(ctx.author.id)].find_one()
         if int(consumer_col['balance']) < item_to_purchase['cost']:
             await ctx.send(embed=discord.Embed(title="You don't have enough money to buy this item",
@@ -323,7 +325,8 @@ class Currency(commands.Cog):
     async def roll_the_dice(self, ctx: Context, money: str) -> None:
         if money == 'all':
             money = self.db[str(ctx.guild.id)][str(ctx.author.id)].find_one()['balance']
-        money = int(money.replace(',', ''))
+        else:
+            money = int(money.replace(',', ''))
         """One way to earn money by betting."""
         server_col = self.db[str(ctx.guild.id)]
         user_col = server_col[str(ctx.author.id)]
