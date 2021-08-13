@@ -164,11 +164,13 @@ class Currency(commands.Cog):
                                                    "currency system.", color=discord.Color.orange())
             help_embed.set_thumbnail(url=ctx.guild.icon_url)
             help_embed.add_field(name="**Add a name to the currency**",
-                                 value='``' + self.bot.command_prefix + "config name=[name you want]``")
+                                 value='``' + self.bot.command_prefix + "config name=[name you want]``",
+                                 inline=False)
             help_embed.add_field(name="**Set permissions for who can use this server's market**",
                                  value='``' + self.bot.command_prefix + "config store=(role=[minimum role needed] - "
                                                                         "rank=[minimum server rank by balance needed] -"
-                                                                        " balance=[minimum balance needed])``")
+                                                                        " balance=[minimum balance needed])``",
+                                 inline=False)
             await ctx.send(embed=help_embed)
         else:
             info_col = self.db[str(ctx.guild.id)]['info']
