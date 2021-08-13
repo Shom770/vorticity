@@ -349,7 +349,7 @@ class Currency(commands.Cog):
         user_col.update_one(user_col.find_one(), {'$set': user_dict})
         collections = server_col.collection_names()
         new_ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
-        rank = new_ranks.index(user_dict['balance'])
+        rank = new_ranks.index(user_dict['balance']) + 1
         user_dict['rank'] = rank
         user_col.update_one(user_col.find_one(), {'$set': user_dict})
 
@@ -358,6 +358,55 @@ class Currency(commands.Cog):
         res_embed.add_field(name=f"{self.bot.user.name} rolled a",
                             value=str(bot_value), inline=False)
         await ctx.send(embed=res_embed)
+
+    @commands.command(aliases=["give", "don"])
+    @commands.cooldown(1, 30, BucketType.user)
+    async def donate(self, ctx: Context, member: discord.Member, money: str, *, message: str = '') -> None:
+        """Give money to another member"""
+        server_col = self.db[str(ctx.guild.id)]
+        user_col = server_col[str(ctx.author.id)]
+        member_to_give_col = server_col[str(member.id)]
+        if money == 'all':
+            money = self.db[str(ctx.guild.id)][str(ctx.author.id)].find_one()['balance']
+        else:
+            money = int(money.replace(',', ''))
+            if money > user_col.find_one()['balance']:
+                await ctx.send(embed=discord.Embed(title=f"You don't have enough money to donate {money} "
+                                                         f"{server_col['info'].find_one()['currency_name']}."),
+                               color=discord.Color.red())
+                return
+            elif money < 0:
+                await ctx.send(embed=discord.Embed(title=f"You can't donate negative money.",
+                                                   description="Nice try.",
+                                                   color=discord.Color.red()))
+                return
+            user_dict = user_col.find_one()
+            member_to_give_dict = member_to_give_col.find_one()
+            user_dict['balance'] -= money
+            member_to_give_dict['balance'] += money
+            user_col.update_one(user_col.find_one(), {'$set': user_dict})
+            member_to_give_col.update_one(member_to_give_col.find_one(),
+                                          {'$set': member_to_give_dict})
+            collections = server_col.collection_names()
+            new_ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
+            user_dict['rank'] = new_ranks.index(user_dict['balance']) + 1
+            member_to_give_dict['rank'] = new_ranks.index(member_to_give_dict['balance']) + 1
+            user_col.update_one(user_col.find_one(), {'$set': user_dict})
+            member_to_give_col.update_one(member_to_give_col.find_one(),
+                                          {'$set': member_to_give_dict})
+            try:
+                await self.bot.get_user(member.id).send(embed=discord.Embed(
+                    title=f"{ctx.author.display_name} has donated ${money} to you.",
+                    description=f"They left a message: {message}",
+                    color=discord.Color.green()))
+            except discord.Forbidden:
+                pass
+            await ctx.send(embed=discord.Embed(
+                title=f"Success!", description=f"You have donated {money} "
+                                               f"{server_col['info'].find_one()['currency_name']} to "
+                                               f"@{member.display_name}#{member.discriminator}",
+                color=discord.Color.green()
+            ))
 
 
 def setup(bot):
