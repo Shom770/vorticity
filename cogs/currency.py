@@ -417,6 +417,22 @@ class Currency(commands.Cog):
                 color=discord.Color.green()
             ))
 
+    @commands.command(name="currency_leaderboard")
+    @commands.cooldown(1, 10, BucketType.user)
+    async def leaderboard(self, ctx: Context):
+        server_col = self.db[str(ctx.guild.id)]
+        collections = server_col.collection_names()
+        users = [(server_col[col].find_one()['balance'],
+                  self.bot.get_user(int(col)).display_name) for col in collections if col not in ('info', 'store')]
+        users = sorted(users, key=lambda x: x[0], reverse=True)
+        leaderboard_embed = discord.Embed(title=f"Leaderboard for {ctx.guild.name}")
+        leaderboard_embed.set_thumbnail(url=ctx.guild.icon_url)
+        for idx, user in enumerate(users):
+            leaderboard_embed.add_field(name=f"{idx + 1}. {user[-1]}", value=f"*{user[0]} "
+                                        f"{server_col['info'].find_one()['currency_name']}*", inline=False)
+
+        await ctx.send(embed=leaderboard_embed)
+
 
 def setup(bot):
     bot.add_cog(Currency(bot))
