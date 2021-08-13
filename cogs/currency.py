@@ -147,16 +147,12 @@ class Currency(commands.Cog):
             return
 
         item = item.split(',' if ', ' not in item else ', ')
-        if item[-1] == 'true':
-            name, desc, cost, in_inventory = item
-        else:
-            name, desc, cost = item
-            in_inventory = 'false'
+        name, desc, cost = item
 
         if len(name) >= 225:
             await ctx.send(embed=discord.Empribed(title="The name you are trying to sell your item under is too long.",
-                                               description="Keep the name under 225 characters",
-                                               color=discord.Color.red()))
+                                                  description="Keep the name under 225 characters",
+                                                  color=discord.Color.red()))
             return
         elif len(desc) >= 1023:
             await ctx.send(embed=discord.Embed(title="The description of your item is too long",
@@ -164,7 +160,11 @@ class Currency(commands.Cog):
                                                color=discord.Color.red()))
             return
 
-        in_inventory = {'true': 1, 'false': 0}[in_inventory]
+        if (name, desc, cost) in server_col[str(ctx.author.id)].find_one()['inventory']:
+            in_inventory = True
+        else:
+            in_inventory = False
+
         if not server_col['store'].find_one():
             server_col['store'].insert_one({'_id': 1, 'items': []})
         user_col = server_col[str(ctx.author.id)]
