@@ -380,6 +380,11 @@ class Currency(commands.Cog):
                                                    description="Nice try.",
                                                    color=discord.Color.red()))
                 return
+            elif ctx.author == member:
+                await ctx.send(embed=discord.Embed(title=f"You can't donate money to yourself.",
+                                                   description="Nice try.",
+                                                   color=discord.Color.red()))
+                return
             user_dict = user_col.find_one()
             member_to_give_dict = member_to_give_col.find_one()
             user_dict['balance'] -= money
