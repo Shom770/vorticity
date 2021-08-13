@@ -16,13 +16,16 @@ class MainCommands(commands.Cog):
             err_embed.description = description
         return err_embed
 
-    # @commands.Cog.listener()
-    # async def on_command_error(self, ctx: Context, exception: Exception) -> None:
-    #     """
-    #     When an error is thrown, this command catches it and will send an error embed regarding:
-    #         - cooldown errors
-    #     """
-    #     await ctx.send(embed=self.error_embed("Slow your horses!", str(exception)))
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx: Context, exception: Exception) -> None:
+        """
+        When an error is thrown, this command catches it and will send an error embed regarding:
+            - cooldown errors
+        """
+        if 'cooldown' in str(exception).lower():
+            await ctx.send(embed=self.error_embed("Slow your horses!", str(exception)))
+        else:
+            raise exception
         
 
 def setup(bot):
