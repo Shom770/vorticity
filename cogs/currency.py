@@ -74,7 +74,7 @@ class Currency(commands.Cog):
                     field['value'] = f"Your rank in the server for this bot's economy is {user_col['rank']}, " \
                                      f"though the minimum rank needed is {failed_element}"
                 elif element_type == 'role':
-                    field['value'] = f"Your top role is {ctx.author.top_role}, " \
+                    field['value'] = f"Your top role is {member.top_role.name}, " \
                                      f"though the minimum role needed is {failed_element}"
                 elif element_type == 'balance':
                     field['value'] = f"Your balance is {user_col['balance']}, " \
@@ -146,7 +146,6 @@ class Currency(commands.Cog):
             return
 
         item = item.split(',' if ', ' not in item else ', ')
-        print(item)
         if item[-1] == 'true':
             name, desc, cost, in_inventory = item
             print(in_inventory)
@@ -236,7 +235,7 @@ class Currency(commands.Cog):
         server_col = self.db[str(ctx.guild.id)]
         market = server_col['store']
         item_to_purchase = sorted(market.find_one()['items'], key=lambda x: x['name'] == item_name)[-1]
-        if ctx.author.id == item_to_purchase['owner']:
+        if int(ctx.author.id) == int(item_to_purchase['owner']):
             await ctx.send(embed=discord.Embed(title="You cannot buy an item you own!", color=discord.Color.red()))
             return
         update_market = sorted(market.find_one()['items'], key=lambda x: x['name'] == item_name)[:-1]
