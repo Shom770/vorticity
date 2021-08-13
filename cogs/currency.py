@@ -6,6 +6,7 @@ import pymongo
 import asyncio
 from bisect import insort
 from config import mongodb_link
+from random import randint
 from typing import Union
 
 
@@ -316,6 +317,42 @@ class Currency(commands.Cog):
         wallet_embed.add_field(name="Server Rank", value=info['rank'], inline=False)
 
         await ctx.send(embed=wallet_embed)
+
+    @commands.command(aliases=["gamble", "gam", "bet"])
+    @commands.cooldown(1, 15, BucketType.user)
+    async def roll_the_dice(self, ctx: Context, money: str) -> None:
+        money = int(money.replace(',', ''))
+        """One way to earn money by betting."""
+        server_col = self.db[str(ctx.guild.id)]
+        user_col = server_col[str(ctx.author.id)]
+        user_dict = user_col.find_one()
+        if money > user_dict['balance']:
+            await ctx.send(embed=discord.Embed(title="You don't have enough money.",
+                                               color=discord.Color.red()))
+            return
+        bot_value, user_value = randint(1, 101), randint(1, 101)
+        if user_value > bot_value:
+            multiplier = (user_value * 2 - bot_value) / 100
+            money = int(money * multiplier)
+            res_embed = discord.Embed(title="You won!", color=discord.Color.green())
+            res_embed.set_footer(text=f"Multiplier: {multiplier}")
+            user_dict['balance'] += money
+        else:
+            res_embed = discord.Embed(title="You lost.", color=discord.Color.red())
+            user_dict['balance'] -= money
+
+        user_col.update_one(user_col.find_one(), {'$set': user_dict})
+        collections = server_col.collection_names()
+        new_ranks = [server_col[col].find_one()['balance'] for col in collections if col not in ('info', 'store')]
+        rank = new_ranks.index(user_dict['balance'])
+        user_dict['rank'] = rank
+        user_col.update_one(user_col.find_one(), {'$set': user_dict})
+
+        res_embed.add_field(name=f"{ctx.author.display_name} rolled a",
+                            value=str(user_value), inline=False)
+        res_embed.add_field(name=f"{self.bot.user.name} rolled a",
+                            value=str(bot_value), inline=False)
+        await ctx.send(embed=res_embed)
 
 
 def setup(bot):
