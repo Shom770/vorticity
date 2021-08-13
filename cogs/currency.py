@@ -160,7 +160,7 @@ class Currency(commands.Cog):
                                                color=discord.Color.red()))
             return
 
-        if (name, desc, cost) in server_col[str(ctx.author.id)].find_one()['inventory']:
+        if name in [ele[0] for ele in server_col[str(ctx.author.id)].find_one()['inventory']]:
             in_inventory = True
         else:
             in_inventory = False
