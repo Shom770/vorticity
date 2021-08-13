@@ -148,13 +148,12 @@ class Currency(commands.Cog):
         item = item.split(',' if ', ' not in item else ', ')
         if item[-1] == 'true':
             name, desc, cost, in_inventory = item
-            print(in_inventory)
         else:
             name, desc, cost = item
             in_inventory = 'false'
 
         if len(name) >= 225:
-            await ctx.send(embed=discord.Embed(title="The name you are trying to sell your item under is too long.",
+            await ctx.send(embed=discord.Empribed(title="The name you are trying to sell your item under is too long.",
                                                description="Keep the name under 225 characters",
                                                color=discord.Color.red()))
             return
