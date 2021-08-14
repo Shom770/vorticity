@@ -29,7 +29,7 @@ class MainCommands(commands.Cog):
 
     @commands.command(aliases=["confession", "anon"])
     async def anonymous(self, ctx: Context, *, message: str):
-        await ctx.purge(limit=1)
+        await ctx.channel.purge(limit=1)
         await ctx.send(embed=discord.Embed(title="Anonymous Message",
                                            description=message, color=discord.Color.blue()))
         
