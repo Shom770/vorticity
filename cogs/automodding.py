@@ -7,6 +7,7 @@ from discord.utils import get
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 import pymongo
+from itertools import zip_longest
 from config import mongodb_link
 
 
@@ -26,8 +27,9 @@ class Automodding(commands.Cog):
         """Calculate seconds from time string"""
         time = time.split(',' if ', ' not in time else ', ')
         mapping = ["y", "mo", "d", "h", "m", "s"]
-        for idx, item in enumerate(time):
-            if mapping[idx] not in item:
+        idx = 0
+        for map, item in zip_longest(mapping, time):
+            if item is None or map not in item:
                 time.insert(idx, 0)
             else:
                 time[idx] = int(time[idx]
@@ -37,7 +39,8 @@ class Automodding(commands.Cog):
                                 .replace('h', '')
                                 .replace('m', '')
                                 .replace('s', ''))
-        
+            idx += 1
+
         return datetime.now() + timedelta(days=(365 * time[0] + 30 * time[1] + time[2]),
                                           hours=time[3], minutes=time[4], seconds=time[5])
 
@@ -49,10 +52,11 @@ class Automodding(commands.Cog):
                 jobs_dict = jobs_col.find_one()
                 for key, value in jobs_col.find_one().items():
                     if key != '_id':
+                        if isinstance(value, dict):
+                            value = list(value.values())[0]
                         if isinstance(value, int):
                             time = datetime.fromisoformat(key)
                             if datetime.now() > time:
-
                                 server_guild = self.bot.get_guild(int(server))
                                 muted_role = get(server_guild.roles, name="Muted")
                                 user = server_guild.get_member(value)
@@ -62,8 +66,8 @@ class Automodding(commands.Cog):
                                                                         color=discord.Color.green()))
                                 except discord.Forbidden:
                                     pass
-                            del jobs_dict[key]
-                jobs_col.update_one(jobs_col.find_one(), {'$set': jobs_dict})
+                                del jobs_dict[key]
+                jobs_col.replace_one(jobs_col.find_one(), jobs_dict)
         
     @commands.command()
     @commands.has_permissions(kick_members=True)
@@ -168,6 +172,8 @@ class Automodding(commands.Cog):
                                                         f"{time.month}-{time.day}-{time.year}, "
                                                         f"{time.hour}:{time.minute}:{time.second}",
                                                   color=discord.Color.red()))
+            await ctx.send(embed=discord.Embed(title=f"{member.display_name} has been muted.",
+                                               color=discord.Color.green()))
 
 
 def setup(bot):
