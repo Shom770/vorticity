@@ -20,7 +20,8 @@ class Automodding(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        self.iterate_through_jobs.start()
+        if not self.iterate_through_jobs.is_running():
+            self.iterate_through_jobs.start()
 
     @staticmethod
     def calculate_time(time: str = "0y, 0mo, 0d, 0h, 0m, 0s") -> datetime:
@@ -45,7 +46,7 @@ class Automodding(commands.Cog):
                                           hours=time[3], minutes=time[4], seconds=time[5])
 
     @loop(seconds=5)
-    async def iterate_through_jobs(self):
+    async def iterate_through_jobs(self) -> None:
         for server in self.db.database_names():
             if len(server) >= 18:
                 jobs_col = self.db[server]['jobs']
@@ -56,16 +57,22 @@ class Automodding(commands.Cog):
                             value = list(value.values())[0]
                         if isinstance(value, int):
                             time = datetime.fromisoformat(key)
+                            server_guild = self.bot.get_guild(int(server))
                             if datetime.now() > time:
-                                server_guild = self.bot.get_guild(int(server))
-                                muted_role = get(server_guild.roles, name="Muted")
-                                user = server_guild.get_member(value)
-                                await user.remove_roles(muted_role)
-                                try:
-                                    await user.send(embed=discord.Embed(title="You have been unmuted.",
-                                                                        color=discord.Color.green()))
-                                except discord.Forbidden:
-                                    pass
+                                banned_users = await server_guild.bans()
+                                banned_users = [i.user for i in banned_users]
+                                if value in (id_lst := [x.id for x in banned_users]):
+                                    banned_user = banned_users[id_lst.index(value)]
+                                    await server_guild.unban(banned_user)
+                                else:
+                                    muted_role = get(server_guild.roles, name="Muted")
+                                    user = server_guild.get_member(value)
+                                    await user.remove_roles(muted_role)
+                                    try:
+                                        await user.send(embed=discord.Embed(title="You have been unmuted.",
+                                                                            color=discord.Color.green()))
+                                    except discord.Forbidden:
+                                        pass
                                 del jobs_dict[key]
                 jobs_col.replace_one(jobs_col.find_one(), jobs_dict)
         
@@ -101,7 +108,7 @@ class Automodding(commands.Cog):
                                                color=discord.Color.red()))
         else:
             try:
-                await member.ban(reason=ban)
+                await member.ban(reason=reason)
             except discord.Forbidden:
                 await ctx.send(embed=discord.Embed(title="I don't have permissions to ban!",
                                                    description="Go to my permissions, and allow Administrator"
@@ -174,6 +181,53 @@ class Automodding(commands.Cog):
                                                   color=discord.Color.red()))
             await ctx.send(embed=discord.Embed(title=f"{member.display_name} has been muted.",
                                                color=discord.Color.green()))
+
+    @commands.command()
+    @commands.has_permissions(ban_members=True)
+    async def tempban(self, ctx: Context, member: discord.Member = None, *, time: str) -> None:
+        """Unban a member"""
+        server_col = self.db[str(ctx.guild.id)]
+        if not member:
+            await ctx.send(embed=discord.Embed(title="You forgot to provide someone to ban!",
+                                               color=discord.Color.red()))
+            return
+        try:
+            await member.ban(reason=None)
+        except discord.Forbidden:
+            await ctx.send(embed=discord.Embed(title="I don't have permissions to ban!",
+                                               description="Go to my permissions, and allow Administrator"
+                                                           " permissions.", color=discord.Color.red()))
+            return
+        if time:
+            jobs_col = server_col['jobs']
+            if not jobs_col.find_one():
+                jobs_col.insert_one({})
+            jobs_dict = jobs_col.find_one()
+            time = self.calculate_time(time)
+            jobs_dict[time.isoformat()] = member.id
+            jobs_col.update_one(jobs_col.find_one(),
+                                {"$set": jobs_dict})
+            await ctx.send(embed=discord.Embed(title=f"{member.display_name} has been tempbanned.",
+                                               color=discord.Color.green()))
+
+    @commands.command()
+    @commands.has_permissions(ban_members=True)
+    async def unban(self, ctx: Context, member: int = None) -> None:
+        """Unban a member"""
+        if not member:
+            await ctx.send(embed=discord.Embed(title="You forgot to provide someone to unban!",
+                                               color=discord.Color.red()))
+            return
+        bans = await ctx.guild.bans()
+        banned_users = [person.user for person in bans]
+        if member in (banned_ids := [banned.id for banned in banned_users]):
+            member = banned_users[banned_ids.index(member)]
+            await ctx.guild.unban(member)
+            await ctx.send(embed=discord.Embed(title=f"{member.display_name} has been unbanned!",
+                                               color=discord.Color.green()))
+        else:
+            await ctx.send(embed=discord.Embed(title=f"This user is not banned!",
+                                               color=discord.Color.red()))
 
 
 def setup(bot):
