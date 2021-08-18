@@ -1,7 +1,7 @@
 from discord.ext import commands
 import discord
 from discord.ext.commands.context import Context
-
+from config import generate_user_num, generate_user_color
 
 class MainCommands(commands.Cog):
     """Cog for all the main commands."""
@@ -26,7 +26,14 @@ class MainCommands(commands.Cog):
             await ctx.send(embed=self.error_embed("Slow your horses!", str(exception)))
         else:
             raise exception
-        
+            
+    @commands.command(aliases=["confession", "anon"])
+    async def anonymous(self, ctx: Context, *, message: str):
+        await ctx.channel.purge(limit=1)
+        await ctx.send(embed=discord.Embed(title=f"User {generate_user_num(ctx.author.id)} says",
+                                           description=message, color=generate_user_color(ctx.author.id)))
+
+
 
 def setup(bot):
     bot.add_cog(MainCommands(bot))
