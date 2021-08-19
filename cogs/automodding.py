@@ -102,6 +102,11 @@ class Automodding(commands.Cog):
                                     except discord.Forbidden:
                                         pass
                             elif time <= datetime.now():
+                                user_col = self.db[server][key]
+                                user_dict = user_col.find_one()
+                                if not get(user_dict, 'productivity', None):
+                                    user_dict['productivity'] = 0
+                                user_dict['productivity'] += ((time - command_raised).total_seconds() // 60) % 60
                                 try:
                                     await member.send(embed=discord.Embed(title="You remained productive for the "
                                                                                 "time period you specified!",
@@ -109,6 +114,8 @@ class Automodding(commands.Cog):
                                 except discord.Forbidden:
                                     pass
                                 del jobs_dict[str(key)]
+                                user_col.replace_one(user_col.find_one(), user_dict)
+                                
                             elif (datetime.now() - command_raised).total_seconds() <= 600 and \
                                     member.status == discord.Status.idle:
                                 del jobs_dict[str(key)]
