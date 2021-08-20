@@ -10,6 +10,8 @@ from pymongo import MongoClient
 import pymongo
 from itertools import zip_longest
 from config import mongodb_link
+from itertools import takewhile
+from random import randint, choice
 
 
 class Automodding(commands.Cog):
@@ -115,7 +117,7 @@ class Automodding(commands.Cog):
                                     pass
                                 del jobs_dict[str(key)]
                                 user_col.replace_one(user_col.find_one(), user_dict)
-                                
+
                             elif (datetime.now() - command_raised).total_seconds() <= 600 and \
                                     member.status == discord.Status.idle:
                                 del jobs_dict[str(key)]
@@ -319,7 +321,7 @@ class Automodding(commands.Cog):
                                       "\n\t-Socialize with others\n\t-Finish work that is due\n\t-etc.",
                                 inline=False)
         await ctx.send(embed=success_embed)
-
+            
 
 def setup(bot):
     bot.add_cog(Automodding(bot))
