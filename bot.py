@@ -18,6 +18,5 @@ import random
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='vort ', intents=intents)
 bot.load_extension("cogs.main_commands")
-bot.load_extension("cogs.currency")
-bot.load_extension("cogs.automodding")
+bot.load_extension("cogs.voice_regulate")
 bot.run(token)

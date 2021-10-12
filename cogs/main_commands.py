@@ -26,7 +26,7 @@ class MainCommands(commands.Cog):
             await ctx.send(embed=self.error_embed("Slow your horses!", str(exception)))
         else:
             raise exception
-            
+
     @commands.command(aliases=["confession", "anon"])
     async def anonymous(self, ctx: Context, *, message: str):
         await ctx.channel.purge(limit=1)
