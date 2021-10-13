@@ -61,6 +61,9 @@ class VoiceRegulate(commands.Cog):
 
                         if start_time <= cur_time <= end_time and not get(user_obj.roles, name="Voice Locked"):
                             await user_obj.add_roles(get(server_guild.roles, name="Voice Locked"))
+                            if user_obj.voice:
+                                await user_obj.move_to(None)
+
                         elif cur_time >= end_time and get(user_obj.roles, name="Voice Locked"):
                             await user_obj.remove_roles(get(server_guild.roles, name="Voice Locked"))
 
@@ -75,13 +78,13 @@ class VoiceRegulate(commands.Cog):
         voice_role = get(ctx.guild.roles, name="Voice Locked")
         if not voice_role:
             voice_role = await ctx.guild.create_role(name="Voice Locked")
-            voice_role.edit(position=ctx.me.top_role.position - 1)
+            await voice_role.edit(position=ctx.me.top_role.position - 1)
             for channel in ctx.guild.voice_channels:
                 await channel.set_permissions(voice_role, connect=False)
 
         start_time, end_time = time.split(' to ')
 
-        end_time, timezone = end_time.split(',' if ', ' not in end_time else ', ')
+        end_time, timezone = end_time.split(',' if ', ' not in end_time else ', ', maxsplit=1)
 
         # Get the timezone from the city name
         async with ClientSession(trust_env=True) as session:
