@@ -3,7 +3,7 @@ from discord.ui import Select, View
 from discord.ext.tasks import loop
 from discord.ext.commands import BucketType
 from discord.ext.commands.context import Context
-from discord import Color, Embed, Guild, Interaction, Member, Message, SelectOption
+from discord import Color, Embed, Forbidden, Guild, Interaction, Member, Message, SelectOption, TextChannel
 from discord.utils import get
 import arrow
 from pymongo import MongoClient
@@ -12,7 +12,7 @@ import ssl
 from itertools import zip_longest
 from config import mongodb_link
 from aiohttp import ClientSession
-from datetime import datetime
+from datetime import datetime, timedelta
 from tzwhere import tzwhere
 
 
@@ -60,12 +60,71 @@ class VoiceRegulate(commands.Cog):
                             )
 
                         if start_time <= cur_time <= end_time and not get(user_obj.roles, name="Voice Locked"):
-                            await user_obj.add_roles(get(server_guild.roles, name="Voice Locked"))
-                            if user_obj.voice:
-                                await user_obj.move_to(None)
+                            try:
+                                await user_obj.add_roles(get(server_guild.roles, name="Voice Locked"))
+                                if user_obj.voice:
+                                    await user_obj.move_to(None)
+                            except Forbidden:
+                                error_embed = Embed(
+                                    title="It looks like I don't have permissions!",
+                                    description="Please allow me to add and remove roles"
+                                    ", and manage voice channels for this to work.",
+                                    color=Color.red()
+                                )
+                                await server_guild.channels[0].send(embed=error_embed)
 
                         elif cur_time >= end_time and get(user_obj.roles, name="Voice Locked"):
-                            await user_obj.remove_roles(get(server_guild.roles, name="Voice Locked"))
+                            try:
+                                await user_obj.remove_roles(get(server_guild.roles, name="Voice Locked"))
+                            except Forbidden:
+                                error_embed = Embed(
+                                    title="It looks like I don't have permissions!",
+                                    description="Please allow me to add and remove roles"
+                                                ", and manage voice channels for this to work.",
+                                    color=Color.red()
+                                )
+                                await list(
+                                    filter(lambda x: isinstance(x, TextChannel), server_guild.channels)
+                                )[0].send(embed=error_embed)
+
+                    if information := user_dict.get("maxtime"):
+                        timezone = information["timezone"]
+                        cur_time = arrow.now(timezone)
+                        allowed_time = datetime.fromisoformat(information["allowed_time"])
+                        allowed_time = timedelta(
+                            hours=allowed_time.hour,
+                            minutes=allowed_time.minute
+                        ).total_seconds() // 60
+                        user_obj: Member = await server_guild.fetch_member(information["id"])
+
+                        if cur_time.time().hour == 0 and cur_time.time().minute <= 2 and \
+                                information["total_time"] != 0:
+                            information["total_time"] = 0
+                            if get(user_obj.roles, name="Voice Locked"):
+                                await user_obj.remove_roles(get(server_guild.roles, name="Voice Locked"))
+
+                        if user_obj.voice:
+                            information["total_time"] += 1
+
+                        user_dict["maxtime"] = information
+                        user.replace_one(user.find_one(), user_dict)
+
+                        if information["total_time"] > allowed_time \
+                                and not get(user_obj.roles, name="Voice Locked"):
+                            try:
+                                await user_obj.add_roles(get(server_guild.roles, name="Voice Locked"))
+                                if user_obj.voice:
+                                    await user_obj.move_to(None)
+                            except Forbidden:
+                                error_embed = Embed(
+                                    title="It looks like I don't have permissions!",
+                                    description="Please allow me to add and remove roles"
+                                                ", and manage voice channels for this to work.",
+                                    color=Color.red()
+                                )
+                                await list(
+                                    filter(lambda x: isinstance(x, TextChannel), server_guild.channels)
+                                )[0].send(embed=error_embed)
 
     @commands.group(name="voice")
     async def voice(self, ctx: commands.Context) -> None:
@@ -82,9 +141,8 @@ class VoiceRegulate(commands.Cog):
             for channel in ctx.guild.voice_channels:
                 await channel.set_permissions(voice_role, connect=False)
 
-        start_time, end_time = time.split(' to ')
-
-        end_time, timezone = end_time.split(',' if ', ' not in end_time else ', ', maxsplit=1)
+        # Find the timezone
+        timezone = time.split(',' if ', ' not in time else ', ', maxsplit=1)[-1]
 
         # Get the timezone from the city name
         async with ClientSession(trust_env=True) as session:
@@ -105,33 +163,85 @@ class VoiceRegulate(commands.Cog):
         timezone_name = tzwhere.tzwhere(forceTZ=True)
         timezone = timezone_name.tzNameAt(*coords)
 
-        if int(start_time[:start_time.find(':')]) < 10:
-            start_time = '0' + start_time
-        if int(end_time[:end_time.find(':')]) < 10:
-            end_time = '0' + end_time
+        if ' to ' in time:
+            start_time, end_time = time.split(' to ')
+            end_time = end_time.split(',')[0]
 
-        start_time_p = datetime.strptime(start_time, "%I:%M %p")
-        end_time_p = datetime.strptime(end_time, "%I:%M %p")
-        start_time = {"hour": start_time_p.hour,
-                      "minute": start_time_p.minute,
-                      "offset": 0}
-        end_time = {"hour": end_time_p.hour,
-                    "minute": end_time_p.minute,
-                    "offset": 1 if start_time["hour"] > end_time_p.hour else 0}
+            if int(start_time[:start_time.find(':')]) < 10:
+                start_time = '0' + start_time
+            if int(end_time[:end_time.find(':')]) < 10:
+                end_time = '0' + end_time
 
-        server_col = self.db[str(ctx.guild.id)]
-        user_col = server_col[str(ctx.author.id)]
-        if not user_col.find_one():
-            user_col.insert_one({})
+            start_time_p = datetime.strptime(start_time, "%I:%M %p")
+            end_time_p = datetime.strptime(end_time, "%I:%M %p")
+            start_time = {"hour": start_time_p.hour,
+                          "minute": start_time_p.minute,
+                          "offset": 0}
+            end_time = {"hour": end_time_p.hour,
+                        "minute": end_time_p.minute,
+                        "offset": 1 if start_time["hour"] > end_time_p.hour else 0}
 
-        user_dict = user_col.find_one()
-        user_dict.update(
-            {"downtime": {"id": ctx.author.id, "start_time": start_time, "end_time": end_time, "timezone": timezone}}
-        )
+            server_col = self.db[str(ctx.guild.id)]
+            user_col = server_col[str(ctx.author.id)]
+            if not user_col.find_one():
+                user_col.insert_one({})
 
-        user_col.replace_one(user_col.find_one(), user_dict)
-        success_embed = Embed(title="Success!", description="The downtime has been set!", color=Color.green())
-        await ctx.send(embed=success_embed)
+            user_dict = user_col.find_one()
+            user_dict.update(
+                {
+                    "downtime": {
+                        "id": ctx.author.id,
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "timezone": timezone
+                    }
+                }
+            )
+
+            user_col.replace_one(user_col.find_one(), user_dict)
+            success_embed = Embed(title="Success!", description="The downtime has been set!", color=Color.green())
+            await ctx.send(embed=success_embed)
+        else:
+            time = time.split(',')[0]
+            if 'h' not in time:
+                time = '00h' + time
+            elif 'm' not in time:
+                time += '00m'
+            
+            if len(time[:time.find('h')]) == 1:
+                time = '0' + time
+            if time.endswith('h'):
+                time += '00m'
+            if len(time[(time.find('h') + 1):time.find('m')]) == 1:
+                time = time[:time.find('h') + 1] + '0' + time[time.find('m') - 1:]
+
+            total_time = datetime.strptime(time, "%Hh%Mm")
+
+            server_col = self.db[str(ctx.guild.id)]
+            user_col = server_col[str(ctx.author.id)]
+
+            user_dict = user_col.find_one()
+            if not user_dict.get('maxtime'):
+                user_dict = {**user_dict, **{
+                    'maxtime': {
+                        'id': 0,
+                        'total_time': 0,
+                        'allowed_time': "",
+                        'timezone': ""
+                    }
+                }}
+
+            user_dict['maxtime']['id'] = ctx.author.id
+            user_dict['maxtime']['allowed_time'] = total_time.isoformat()
+            user_dict['maxtime']['timezone'] = timezone
+            user_col.replace_one(user_col.find_one(), user_dict)
+
+            success_embed = Embed(
+                title="Success!",
+                description="The maximum time in VC has been set!",
+                color=Color.green()
+            )
+            await ctx.send(embed=success_embed)
 
 
 def setup(bot):
